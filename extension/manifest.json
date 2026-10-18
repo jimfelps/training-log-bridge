@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "PushPress & Garmin \u2014 Workout Export and Archive",
+  "version": "0.2.1",
+  "minimum_chrome_version": "111",
+  "description": "Export PushPress workouts and archive finalized Garmin strength results as JSON and CSV.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://train.pushpress.com/*"
+      ],
+      "js": [
+        "capture.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://train.pushpress.com/*"
+      ],
+      "js": [
+        "catalog.js",
+        "converter.js",
+        "panel.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "https://connect.garmin.com/*"
+      ],
+      "js": [
+        "garmin-capture.bundle.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://connect.garmin.com/*"
+      ],
+      "js": [
+        "garmin-panel.bundle.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}

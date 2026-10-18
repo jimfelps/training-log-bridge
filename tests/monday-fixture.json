@@ -1,0 +1,48 @@
+[
+  {
+    "publishingDate": "2026-01-19 00:00:00.0",
+    "classTypeDto": {
+      "name": "CrossFit"
+    },
+    "partDtos": [
+      {
+        "title": "ANNOUNCEMENT",
+        "workoutTitle": "Transition Week",
+        "description": "Synthetic announcement for parser testing.",
+        "workoutType": "METCON"
+      },
+      {
+        "title": "Strength: Front Squat",
+        "workoutTitle": "Every 4:00 x 5 Sets",
+        "parentWorkoutTitle": "Every 4:00 x 5 Sets",
+        "description": "5 Front Squats @ 65-70%\n+\n2/2 Turkish Get-Ups\n\nModifications:\n- Level 1: 5 Goblet Squats + 2/2 Half Get-Ups.",
+        "athletesNotes": "Synthetic test instructions.",
+        "workoutType": "STRENGTH"
+      },
+      {
+        "title": "Partner AMRAP 7",
+        "workoutTitle": "General Warm Up",
+        "description": "6:00 AMRAP\n20 Single-Unders\n4 Push-Ups\n6/4 Calorie Bike\n\nTarget: example\nFlow: Partners alternate movements",
+        "workoutType": "METCON"
+      },
+      {
+        "title": "PRVN Reset",
+        "workoutTitle": "For Quality",
+        "description": "Demo mobility section.",
+        "workoutType": "METCON"
+      },
+      {
+        "title": "Accessory Finisher",
+        "workoutTitle": "For Quality",
+        "description": "Demo accessory section.",
+        "workoutType": "METCON"
+      },
+      {
+        "title": "Demo Challenge",
+        "workoutTitle": "Weekly Challenge #3",
+        "description": "Demo challenge section.",
+        "workoutType": "CHIPPER"
+      }
+    ]
+  }
+]

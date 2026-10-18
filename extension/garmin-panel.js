@@ -1,0 +1,74 @@
+(() => {
+  'use strict';
+  const A=globalThis.PPG_ARCHIVE,activities=new Map();let root,panel,body,status,select,active='';
+  const el=(tag,props={},...children)=>{
+    const n=document.createElement(tag);
+    for(const [k,v] of Object.entries(props)){
+      if(k.startsWith('on'))n.addEventListener(k.slice(2),v);
+      else if(k==='text')n.textContent=v;
+      else if(['value','checked','hidden','className','disabled'].includes(k))n[k]=v;
+      else n.setAttribute(k,v);
+    }
+    for(const c of children)if(c!==null&&c!==undefined)n.append(typeof c==='string'?document.createTextNode(c):c);
+    return n;
+  };
+  const btn=(text,onclick,cls='')=>el('button',{text,onclick,className:cls,type:'button'});
+  const field=(text,input)=>el('label',{className:'field'},el('span',{text}),input);
+  const current=()=>location.pathname.match(/\/activity\/(\d+)/)?.[1]??'';
+  const report=(text,error=false)=>{if(status){status.textContent=text;status.className=error?'status error':'status';}};
+  function ingest(kind,raw,receivedAt){
+    const data=A.sanitize(kind,raw),id=data.activityId,entry=activities.get(id)||{context:{},reviewed:false};
+    entry[kind]=data;entry[kind+'ReceivedAt']=receivedAt||new Date().toISOString();entry.reviewed=false;
+    activities.delete(id);activities.set(id,entry);while(activities.size>12)activities.delete(activities.keys().next().value);
+    const page=current();if(!active||page===id||!activities.has(active))active=id;
+    if(root){updateSelect();render();report('Captured '+kind+' for activity '+id+'.');}
+  }
+  function updateSelect(){select.replaceChildren(...[...activities.keys()].map(id=>el('option',{value:id,text:id+' · '+(activities.get(id).summary?.activityName||'Waiting for summary')})));select.value=active;}
+  function download(text,name,mime){const url=URL.createObjectURL(new Blob([text],{type:mime}));const a=el('a',{href:url,download:name});root.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+  function render(){
+    body.replaceChildren();const e=activities.get(active);
+    if(!e){body.append(el('h2',{text:'Open a completed Garmin activity'}),el('p',{text:'Refresh its page after saving your edits. The summary and exercise sets will be captured as Garmin loads them. You can also load saved responses below.'}));return;}
+    const fresh=el('p',{className:'hint',text:'Summary captured: '+(e.summaryReceivedAt||'not received')+'\nSets captured: '+(e.setsReceivedAt||'not received')});body.append(fresh);
+    if(!e.summary||!e.sets){body.append(el('p',{text:'Waiting for '+(!e.summary?'activity summary':'exercise sets')+'. Refresh the activity page or load the missing response file below.'}));return;}
+    let a;try{a=A.archive(e.summary,e.sets,e.context);}catch(err){report(err.message,true);return;}
+    const round=(n,d=0)=>n===null?'—':Number(n).toFixed(d);
+    body.append(el('h2',{text:a.activity.name||'Activity '+active}),el('p',{text:(a.activity.start_time_local_raw||'Unknown local start')+' · '+a.activity.type}),
+      el('div',{className:'stats'},el('strong',{text:a.totals.active_sets+' lifting sets'}),el('strong',{text:a.totals.reps+' reps'}),el('strong',{text:round(a.totals.loaded_volume_lb)+' lb loaded volume'})));
+    if(a.warnings.length)body.append(el('ul',{className:'warnings'},...a.warnings.map(w=>el('li',{text:w}))));
+    body.append(el('p',{className:'note',text:a.activity.description||'No activity notes.'}));
+    const table=el('table',{},el('thead',{},el('tr',{},...['Set','Exercise','Reps','lb','Rest after'].map(text=>el('th',{text})))),el('tbody',{},...a.records.filter(r=>r.set_type==='ACTIVE').map(r=>el('tr',{},el('td',{text:r.active_set_number}),el('td',{text:(r.exercise_name||'Unidentified').replaceAll('_',' ')}),el('td',{text:r.reps??'—'}),el('td',{text:round(r.weight_lb,1)}),el('td',{text:r.rest_after_seconds===null?'—':round(r.rest_after_seconds)+'s'})))));body.append(el('div',{className:'table-wrap'},table));
+    const metrics=[['Average / max HR',[a.activity.average_hr,a.activity.max_hr].map(x=>x??'—').join(' / ')],['Calories',a.activity.calories],['Aerobic / anaerobic effect',[a.activity.aerobic_training_effect,a.activity.anaerobic_training_effect].map(x=>round(x,1)).join(' / ')],['Training load',round(a.activity.training_load,1)],['Effort / feeling (Garmin raw scale)',[a.activity.perceived_effort_raw,a.activity.feeling_raw].map(x=>x??'—').join(' / ')],['Associated workout ID',a.activity.associated_workout_id||'Not supplied']];
+    body.append(el('details',{},el('summary',{text:'Activity metrics & workout link'}),...metrics.map(([key,value])=>el('p',{text:key+': '+(value??'—')}))));
+    const reviewed=el('input',{type:'checkbox',checked:e.reviewed,onchange:event=>{e.reviewed=event.target.checked;}});
+    for(const [key,label] of [['provider','Programming provider (optional)'],['cycle','Cycle (optional)'],['pushpressWorkoutId','PushPress workout part ID (optional)'],['note','Additional archive note (optional)']]){
+      const input=el('input',{value:e.context[key]||'',oninput:event=>{e.context[key]=event.target.value;e.reviewed=false;reviewed.checked=false;}});body.append(field(label,input));
+    }
+    body.append(el('label',{className:'review'},reviewed,'I saved my final edits, refreshed this page, and checked the captured sets and notes.'));
+    function build(){
+      if(!e.reviewed)throw Error('Save edits, refresh Garmin, then review and check the confirmation box.');
+      const page=current();if(page&&page!==active)throw Error('This is a different activity from the open page. Open that activity and refresh before archiving.');
+      return A.archive(e.summary,e.sets,{...e.context,summaryReceivedAt:e.summaryReceivedAt,setsReceivedAt:e.setsReceivedAt});
+    }
+    body.append(btn('Archive finalized activity (JSON)',()=>{try{const out=build();download(JSON.stringify(out,null,2)+'\n','garmin_'+active+'_archive.json','application/json');report('Archive downloaded. Keep this file; optionally import it into your SQLite log using the included script.');}catch(err){report(err.message,true);}},'primary'),btn('Download sets CSV',()=>{try{download(A.csv(build()),'garmin_'+active+'_sets.csv','text/csv');report('CSV downloaded. JSON archive also preserves notes, metrics and source snapshots.');}catch(err){report(err.message,true);}}));
+    body.append(el('p',{className:'hint',text:'JSON is your complete portable record. CSV is for set analysis. No database is created until you run the optional SQLite importer.'}));
+  }
+  function mount(){
+    const host=el('div');host.style.cssText='position:fixed;right:20px;bottom:20px;z-index:2147483646';root=host.attachShadow({mode:'closed'});
+    root.append(el('style',{text:`:host{all:initial;font:14px system-ui,sans-serif;color:#172b45}*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #bac8d9;border-radius:8px;padding:9px 12px;background:white;color:#172b45;margin:4px}button:hover{background:#e8f1fa}.primary,.launch{background:#143b70;color:white}.launch{box-shadow:0 4px 20px #0003;padding:13px 18px}.panel{position:fixed;right:20px;top:20px;bottom:20px;width:min(680px,calc(100vw - 32px));border:1px solid #c4cedb;border-radius:14px;background:#fff;box-shadow:0 12px 60px #0005;display:flex;flex-direction:column;overflow:hidden}.panel[hidden]{display:none}header{padding:16px 20px;background:#143b70;color:white;display:flex;align-items:center;justify-content:space-between}header h1{font-size:19px;margin:0}header small{display:block;margin-top:5px;color:#deebfc}.toolbar{padding:10px 16px;display:flex;align-items:center;gap:8px}select{flex:1;min-width:0}.status{padding:12px 20px;background:#e9f1fc;line-height:1.5}.error{background:#ffe7df;color:#8b2d1f}.body{padding:16px 20px;overflow:auto;flex:1;min-height:0}h2{font-size:19px}.hint{white-space:pre-line;color:#52677f;font-size:12px;line-height:1.5}.stats{display:flex;flex-wrap:wrap;gap:16px;padding:12px;background:#eff4fa;border-radius:8px}.warnings{padding:14px 14px 14px 32px;background:#fff2d4;font-size:13px;border-radius:8px}.warnings li+li{margin-top:8px}.note{white-space:pre-wrap;line-height:1.5}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:9px 7px;border-bottom:1px solid #dde5ef;text-align:left}summary{cursor:pointer;font-weight:600;padding:10px 0}.field{display:block;margin:12px 0}.field span{display:block;font-size:12px;font-weight:600;margin-bottom:5px}input:not([type=checkbox]),select{padding:8px;border:1px solid #b9c7d8;border-radius:6px;width:100%}input[type=checkbox]{width:17px;height:17px;accent-color:#143b70}.review{display:flex;gap:8px;margin:18px 0;line-height:1.5;font-size:13px}footer{padding:10px 20px;border-top:1px solid #d9e2ed;color:#53667b;font-size:12px}footer input{margin:8px 0}` }));
+    panel=el('div',{className:'panel',hidden:true});body=el('div',{className:'body'});status=el('div',{className:'status',text:'Waiting for activity summary and exercise-set responses.'});
+    select=el('select',{'aria-label':'Captured activity',onchange:e=>{active=e.target.value;render();}});
+    const file=el('input',{type:'file',multiple:'multiple',accept:'.json,.txt',onchange:async event=>{
+      try{for(const f of event.target.files){if(f.size>5000000)throw Error('Response files must be smaller than 5 MB.');const raw=JSON.parse(await f.text());ingest(Array.isArray(raw.exerciseSets)?'sets':'summary',raw);}}
+      catch(err){report(err.message,true);}finally{event.target.value='';}
+    }});
+    panel.append(el('header',{},el('div',{},el('h1',{text:'Garmin → Training Archive'}),el('small',{text:'Review corrected results. Save your own copy.'})),btn('Close',()=>{panel.hidden=true;})),el('div',{className:'toolbar'},select,btn('Clear captures',()=>{activities.clear();active='';updateSelect();render();report('Cleared. Refresh the completed activity to capture again.');})),status,body,el('footer',{},'Local only • No tokens collected • No changes made to Garmin',el('details',{},el('summary',{text:'Load saved summary and exercise-set responses'}),file)));
+    root.append(btn('Archive Garmin activity',()=>{const page=current();if(page&&activities.has(page)&&page!==active){active=page;updateSelect();render();}panel.hidden=!panel.hidden;},'launch'),panel);
+    document.documentElement.append(host);updateSelect();render();
+  }
+  window.addEventListener('message',e=>{
+    if(e.source!==window||e.origin!==location.origin||e.data?.source!=='ppg-garmin-response-v1')return;
+    try{const p=e.data.payload;if(p?.kind!=='sets'&&p?.kind!=='summary')return;ingest(p.kind,p.data,p.receivedAt);}catch(err){report(err.message,true);}
+  });
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+  window.postMessage({source:'ppg-garmin-ready-v1'},location.origin);
+})();
